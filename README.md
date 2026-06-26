@@ -1,4 +1,4 @@
-# 🩺 @ganeshak11/healthcheck
+# 🩺 @fortis-tools/healthcheck
 
 A production-grade, miniature SRE observability CLI tool. It deeply inspects domains and provides a comprehensive diagnostic report covering DNS, SSL, HTTP/2, and Security Posture.
 
@@ -9,7 +9,7 @@ It goes far beyond a simple `ping` by tracking HTTP redirects, detecting ALPN ne
 Run it instantly against any domain using `npx`:
 
 ```bash
-npx @ganeshak11/healthcheck google.com
+npx @fortis-tools/healthcheck google.com
 ```
 
 ## ✨ Features
@@ -28,17 +28,17 @@ npx @ganeshak11/healthcheck google.com
 
 ### Single Domain Inspection
 ```bash
-npx @ganeshak11/healthcheck yourdomain.com
+npx @fortis-tools/healthcheck yourdomain.com
 ```
 
 ### Multi-Domain Comparison
 ```bash
-npx @ganeshak11/healthcheck google.com github.com example.com
+npx @fortis-tools/healthcheck google.com github.com example.com
 ```
 
 ### CI/CD JSON Output
 ```bash
-npx @ganeshak11/healthcheck yourdomain.com --json
+npx @fortis-tools/healthcheck yourdomain.com --json
 ```
 
 ## 🛠️ Built With

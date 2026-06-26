@@ -39,16 +39,16 @@ const targets = args.filter(a => !a.startsWith('-')).map(a => a.replace(/^https?
 
 if (isHelp || targets.length === 0) {
     console.log(`
-Usage: @ganeshak11/healthcheck [domain(s)] [options]
+Usage: @fortis-tools/healthcheck [domain(s)] [options]
 
 Options:
   --json      Output results in raw JSON format for CI/CD
   --help, -h  Show this help menu
 
 Examples:
-  @ganeshak11/healthcheck google.com
-  @ganeshak11/healthcheck github.com ganeshangadi.online
-  @ganeshak11/healthcheck mysite.com --json
+  @fortis-tools/healthcheck google.com
+  @fortis-tools/healthcheck github.com ganeshangadi.online
+  @fortis-tools/healthcheck mysite.com --json
 `);
     process.exit(0);
 }

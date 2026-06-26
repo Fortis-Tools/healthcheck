@@ -39,16 +39,16 @@ const targets = args.filter(a => !a.startsWith('-')).map(a => a.replace(/^https?
 
 if (isHelp || targets.length === 0) {
     console.log(`
-Usage: fortis-healthcheck [domain(s)] [options]
+Usage: @ganeshak11/healthcheck [domain(s)] [options]
 
 Options:
   --json      Output results in raw JSON format for CI/CD
   --help, -h  Show this help menu
 
 Examples:
-  fortis-healthcheck google.com
-  fortis-healthcheck github.com ganeshangadi.online
-  fortis-healthcheck mysite.com --json
+  @ganeshak11/healthcheck google.com
+  @ganeshak11/healthcheck github.com ganeshangadi.online
+  @ganeshak11/healthcheck mysite.com --json
 `);
     process.exit(0);
 }
@@ -58,7 +58,7 @@ async function checkDNS(domain: string) {
     const start = performance.now();
     let ipv4 = 'N/A';
     let ipv6 = 'N/A';
-    
+
     try {
         const [a, aaaa] = await Promise.allSettled([
             dns.resolve4(domain),
@@ -70,8 +70,8 @@ async function checkDNS(domain: string) {
 
         const latency = Math.round(performance.now() - start);
         const isSuccess = ipv4 !== 'N/A' || ipv6 !== 'N/A';
-        return { 
-            success: isSuccess, ipv4, ipv6, latency, 
+        return {
+            success: isSuccess, ipv4, ipv6, latency,
             error: isSuccess ? undefined : 'No A or AAAA records found',
             score: isSuccess ? 10 : 0
         };
@@ -93,21 +93,21 @@ async function checkSSL(domain: string) {
 
         const socket = tls.connect(options, () => {
             const cert = socket.getPeerCertificate();
-            
+
             if (!cert || Object.keys(cert).length === 0) {
                 socket.end();
                 resolve({ success: false, error: 'No certificate', score: 0 });
                 return;
             }
-            
+
             const validFrom = new Date(cert.valid_from);
             const validTo = new Date(cert.valid_to);
             const validDays = Math.round((validTo.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-            
+
             const rawIssuer = cert.issuer.O || cert.issuer.CN || 'Unknown';
             const issuer = Array.isArray(rawIssuer) ? rawIssuer[0] : rawIssuer;
             const cipherObj = socket.getCipher();
-            
+
             resolve({
                 success: true,
                 validDays,
@@ -119,7 +119,7 @@ async function checkSSL(domain: string) {
                 alpnProtocol: socket.alpnProtocol || 'http/1.1',
                 score: validDays > 30 ? 10 : (validDays > 0 ? 5 : 0)
             });
-            
+
             socket.end();
         });
 
@@ -141,7 +141,7 @@ async function checkHTTPAndHeaders(domain: string, alpnProtocol: string) {
         try {
             const parsed = new URL(currentUrl);
             const client = parsed.protocol === 'https:' ? https : http;
-            
+
             const res = await new Promise<http.IncomingMessage>((resolve, reject) => {
                 const req = client.request(currentUrl, { method: 'GET', timeout: 5000 }, resolve);
                 req.on('error', reject);
@@ -165,7 +165,7 @@ async function checkHTTPAndHeaders(domain: string, alpnProtocol: string) {
 
             const headerResults: any[] = [];
             let headersPresentCount = 0;
-            
+
             for (const h of SECURITY_HEADERS) {
                 const present = !!res.headers[h.key];
                 if (present) headersPresentCount++;
@@ -204,7 +204,7 @@ async function checkHTTPAndHeaders(domain: string, alpnProtocol: string) {
             return { success: false, error: error.message, score: 0, headerResults: [], headersPresentCount: 0, maxHeaders: SECURITY_HEADERS.length };
         }
     }
-    
+
     return { success: false, error: 'Too many redirects', score: 0, headerResults: [], headersPresentCount: 0, maxHeaders: SECURITY_HEADERS.length };
 }
 
@@ -235,7 +235,7 @@ async function runCheck(domain: string): Promise<CheckResult> {
 function renderProgressBar(score: number, max: number): string {
     const filled = Math.round((score / max) * 10);
     const bar = '█'.repeat(filled) + '░'.repeat(10 - filled);
-    
+
     if (filled < 5) return chalk.red(bar) + ` ${score}/${max}`;
     if (filled < 8) return chalk.yellow(bar) + ` ${score}/${max}`;
     return chalk.green(bar) + ` ${score}/${max}`;
@@ -267,7 +267,7 @@ async function main() {
 
         console.log(chalk.cyan.bold('Domain                  Score'));
         console.log(chalk.gray('────────────────────────────────────'));
-        
+
         results.forEach(r => {
             const paddedDomain = r.domain.padEnd(23, ' ');
             const scoreStr = `${r.score}/10`.padStart(5, ' ');
@@ -328,7 +328,7 @@ Expires: ${s.validTo}\n`;
         if (s.validDays < 7) out += chalk.red.bold(`🚨 Expires in ${s.validDays} days\n`);
         else if (s.validDays < 30) out += chalk.yellow.bold(`⚠ Expires in ${s.validDays} days\n`);
         else out += `Days Remaining: ${s.validDays}\n`;
-        
+
         out += `TLS Version: ${s.protocol}
 Cipher: ${s.cipher}
 `;
@@ -340,10 +340,10 @@ Cipher: ${s.cipher}
 ---${chalk.bold.cyan("HTTP")} ${chalk.gray(`(${h.score}/10)`)}
 `;
     if (h.success) {
-        const compLine = h.compression !== 'None' 
-            ? chalk.green(`✓ ${h.compression}`) 
+        const compLine = h.compression !== 'None'
+            ? chalk.green(`✓ ${h.compression}`)
             : chalk.yellow(`None (Potential bandwidth savings available)`);
-            
+
         const protoLine = h.protocol === 'HTTP/2'
             ? chalk.green(`HTTP/2 Enabled ✓`)
             : `${h.protocol} ${chalk.gray('(HTTP/2 not enabled)')}`;

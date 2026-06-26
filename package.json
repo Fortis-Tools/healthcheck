@@ -1,0 +1,26 @@
+{
+  "name": "@ganeshak11/healthcheck",
+  "version": "1.0.0",
+  "description": "A rapid diagnostic CLI for DevOps",
+  "main": "dist/index.js",
+  "type": "module",
+  "bin": {
+    "healthcheck": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node ./dist/index.js",
+    "prepublishOnly": "npm run build"
+  },
+  "author": "Ganesh Angadi",
+  "license": "ISC",
+  "dependencies": {
+    "boxen": "^8.0.1",
+    "chalk": "^5.3.0",
+    "ora": "^8.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.4"
+  }
+}

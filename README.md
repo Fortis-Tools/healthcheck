@@ -18,6 +18,10 @@ npx @fortis-tools/healthcheck google.com
 - **Deep SSL Inspection**: Evaluates the SSL Certificate issuer, exact expiry dates, Cipher Suite, and negotiated TLS Version.
 - **ALPN HTTP/2 Detection**: Injects `ALPNProtocols` into the TLS socket to natively determine if the server supports HTTP/2 binary framing.
 - **Actionable Security Posture**: Checks for 6 strict security headers (e.g. `Content-Security-Policy`, `HSTS`) and provides clear explanations for why they matter.
+- **Tech Stack & WAF Recon (`--discover`)**: Parses headers to identify the underlying cloud provider, WAF (Cloudflare, AWS, Vercel), and framework.
+- **Port Scanner (`--ports`)**: Concurrently scans standard vulnerable ports (22, 3306, 27017, etc.) with strict timeouts and alerts on dangerous internet exposure.
+- **Email Security (`--mail`)**: Queries DNS TXT records to validate SPF and DMARC configurations against spoofing.
+- **Endpoint Spider (`--spider`)**: Parses `sitemap.xml`, samples endpoints, and concurrently measures TTFB latency across the application.
 - **Smart Scoring Engine**: Calculates an Overall Health Score (out of 10) and provides a list of actionable recommendations.
 - **CI/CD Ready**: 
   - Supports `--json` flag to output raw structured data.
@@ -26,9 +30,15 @@ npx @fortis-tools/healthcheck google.com
 
 ## 💻 Usage
 
-### Single Domain Inspection
+### Single Domain Inspection (Standard)
 ```bash
 npx @fortis-tools/healthcheck yourdomain.com
+```
+
+### Full Reconnaissance Mode
+Run all the advanced diagnostic flags at once:
+```bash
+npx @fortis-tools/healthcheck yourdomain.com --discover --ports --mail --spider
 ```
 
 ### Multi-Domain Comparison

@@ -5,6 +5,7 @@ import dns from 'node:dns/promises';
 import https from 'node:https';
 import http from 'node:http';
 import tls from 'node:tls';
+import net from 'node:net';
 import { performance } from 'node:perf_hooks';
 import { URL } from 'node:url';
 import boxen from 'boxen';
@@ -18,6 +19,9 @@ interface CheckResult {
     ssl: any;
     http: any;
     security: any;
+    ports?: any;
+    mail?: any;
+    spider?: any;
     score: number;
     exitCode: number;
 }
@@ -35,6 +39,10 @@ const SECURITY_HEADERS = [
 const args = process.argv.slice(2);
 const isJson = args.includes('--json');
 const isHelp = args.includes('--help') || args.includes('-h');
+const isDiscover = args.includes('--discover');
+const isSpider = args.includes('--spider');
+const isPorts = args.includes('--ports');
+const isMail = args.includes('--mail');
 const targets = args.filter(a => !a.startsWith('-')).map(a => a.replace(/^https?:\/\//, '').split('/')[0]);
 
 if (isHelp || targets.length === 0) {
@@ -44,11 +52,16 @@ Usage: @fortis-tools/healthcheck [domain(s)] [options]
 Options:
   --json      Output results in raw JSON format for CI/CD
   --help, -h  Show this help menu
+  
+  --discover  Detect Cloud Provider, Tech Stack, and WAF
+  --spider    Fetch sitemap.xml and ping top 10 endpoints
+  --ports     Scan for open dangerous ports (22, 3306, etc.)
+  --mail      Check DNS for SPF and DMARC email security records
 
 Examples:
   @fortis-tools/healthcheck google.com
-  @fortis-tools/healthcheck github.com ganeshangadi.online
-  @fortis-tools/healthcheck mysite.com --json
+  @fortis-tools/healthcheck mysite.com --discover --ports --mail
+  @fortis-tools/healthcheck github.com --spider --json
 `);
     process.exit(0);
 }
@@ -185,6 +198,19 @@ async function checkHTTPAndHeaders(domain: string, alpnProtocol: string) {
                 finalProtocol = 'HTTP/2'; // ALPN confirmed HTTP/2 support even if Node used 1.1
             }
 
+            // Tech Stack & WAF Detection
+            let techStack = 'Unknown';
+            let waf = 'None Detected';
+            const poweredBy = res.headers['x-powered-by'] as string;
+            const serverHeader = res.headers['server'] as string;
+            if (poweredBy) techStack = poweredBy;
+            else if (serverHeader) techStack = serverHeader;
+
+            if (res.headers['cf-ray']) waf = 'Cloudflare';
+            else if (res.headers['x-amz-cf-id']) waf = 'AWS CloudFront';
+            else if (res.headers['x-vercel-id']) waf = 'Vercel';
+            else if (res.headers['fastly-client-ip'] || res.headers['x-fastly-request-id']) waf = 'Fastly';
+
             return {
                 success: true,
                 status: res.statusCode || 0,
@@ -197,6 +223,8 @@ async function checkHTTPAndHeaders(domain: string, alpnProtocol: string) {
                 headerResults,
                 headersPresentCount,
                 maxHeaders: SECURITY_HEADERS.length,
+                techStack,
+                waf,
                 score: (res.statusCode && res.statusCode < 400) ? 10 : 0
             };
 
@@ -208,11 +236,140 @@ async function checkHTTPAndHeaders(domain: string, alpnProtocol: string) {
     return { success: false, error: 'Too many redirects', score: 0, headerResults: [], headersPresentCount: 0, maxHeaders: SECURITY_HEADERS.length };
 }
 
+// --- Recon Functions ---
+async function checkPorts(domain: string) {
+    const ports = [
+        { port: 22, name: 'SSH', dangerous: true },
+        { port: 80, name: 'HTTP', dangerous: false },
+        { port: 443, name: 'HTTPS', dangerous: false },
+        { port: 3306, name: 'MySQL', dangerous: true },
+        { port: 5432, name: 'PostgreSQL', dangerous: true },
+        { port: 27017, name: 'MongoDB', dangerous: true },
+        { port: 6379, name: 'Redis', dangerous: true }
+    ];
+
+    const results = await Promise.all(ports.map(p => {
+        return new Promise<{port: number, name: string, open: boolean, dangerous: boolean}>((resolve) => {
+            const socket = new net.Socket();
+            socket.setTimeout(2000);
+
+            socket.on('connect', () => {
+                socket.destroy();
+                resolve({ ...p, open: true });
+            });
+            socket.on('timeout', () => {
+                socket.destroy();
+                resolve({ ...p, open: false });
+            });
+            socket.on('error', () => resolve({ ...p, open: false }));
+
+            socket.connect(p.port, domain);
+        });
+    }));
+
+    return results;
+}
+
+async function checkMailSecurity(domain: string) {
+    const result = { spf: false, dmarc: false, error: '' };
+    try {
+        const txtRecords = await dns.resolveTxt(domain);
+        for (const record of txtRecords) {
+            if (record.join('').includes('v=spf1')) {
+                result.spf = true;
+                break;
+            }
+        }
+    } catch (e: any) {
+        if (e.code !== 'ENODATA' && e.code !== 'ENOTFOUND') {
+            result.error += 'SPF lookup failed. ';
+        }
+    }
+
+    try {
+        const dmarcRecords = await dns.resolveTxt('_dmarc.' + domain);
+        for (const record of dmarcRecords) {
+            if (record.join('').includes('v=DMARC1')) {
+                result.dmarc = true;
+                break;
+            }
+        }
+    } catch (e: any) {
+         if (e.code !== 'ENODATA' && e.code !== 'ENOTFOUND') {
+            result.error += 'DMARC lookup failed.';
+        }
+    }
+    return result;
+}
+
+async function spiderSitemap(domain: string) {
+    const sitemapUrl = `https://${domain}/sitemap.xml`;
+    try {
+        const res = await new Promise<string>((resolve, reject) => {
+            https.get(sitemapUrl, { timeout: 5000 }, (resp) => {
+                if (resp.statusCode !== 200) {
+                    reject(new Error(`Status ${resp.statusCode}`));
+                    return;
+                }
+                let data = '';
+                resp.on('data', (chunk) => data += chunk);
+                resp.on('end', () => resolve(data));
+            }).on('error', reject).on('timeout', () => reject(new Error('Timeout')));
+        });
+        
+        const urls: string[] = [];
+        const regex = /<loc>(.*?)<\/loc>/g;
+        let match;
+        while ((match = regex.exec(res)) !== null) {
+            urls.push(match[1]);
+        }
+
+        if (urls.length === 0) return { success: false, error: 'No URLs found in sitemap' };
+
+        // Shuffle and pick 10
+        const shuffled = urls.sort(() => 0.5 - Math.random());
+        const selected = shuffled.slice(0, Math.min(10, urls.length));
+
+        const results = await Promise.all(selected.map(async (u) => {
+            const start = performance.now();
+            try {
+                const parsed = new URL(u);
+                const client = parsed.protocol === 'https:' ? https : http;
+                const status = await new Promise<number>((resolveHttp, rejectHttp) => {
+                    const req = client.request(u, { method: 'HEAD', timeout: 5000 }, (resp) => {
+                        resolveHttp(resp.statusCode || 0);
+                        resp.resume(); // consume data
+                    });
+                    req.on('error', rejectHttp);
+                    req.on('timeout', () => { req.destroy(); rejectHttp(new Error('Timeout')); });
+                    req.end();
+                });
+                const latency = Math.round(performance.now() - start);
+                return { url: u, status, latency };
+            } catch (err: any) {
+                return { url: u, status: 0, latency: 0, error: err.message };
+            }
+        }));
+
+        return { success: true, endpoints: results };
+    } catch (e: any) {
+        return { success: false, error: e.message || 'Failed to fetch sitemap' };
+    }
+}
+
 // --- Runner ---
 async function runCheck(domain: string): Promise<CheckResult> {
     const dnsRes: any = await checkDNS(domain);
     const sslRes: any = await checkSSL(domain);
     const httpRes: any = await checkHTTPAndHeaders(domain, sslRes.alpnProtocol || 'http/1.1');
+
+    let portsRes: any = null;
+    let mailRes: any = null;
+    let spiderRes: any = null;
+
+    if (isPorts) portsRes = await checkPorts(domain);
+    if (isMail) mailRes = await checkMailSecurity(domain);
+    if (isSpider) spiderRes = await spiderSitemap(domain);
 
     let overallScore = 0;
     if (dnsRes.success) overallScore += 2;
@@ -228,7 +385,7 @@ async function runCheck(domain: string): Promise<CheckResult> {
     else if (!sslRes.success || sslRes.validDays < 30) exitCode = 2;
     else if (httpRes.headersPresentCount < httpRes.maxHeaders) exitCode = 1;
 
-    return { domain, dns: dnsRes, ssl: sslRes, http: httpRes, security: httpRes, score: overallScore, exitCode };
+    return { domain, dns: dnsRes, ssl: sslRes, http: httpRes, security: httpRes, ports: portsRes, mail: mailRes, spider: spiderRes, score: overallScore, exitCode };
 }
 
 // --- UI Helpers ---
@@ -379,6 +536,52 @@ ${renderProgressBar(secScore, 10)}
         out += chalk.red(`\nSkipped (HTTP request failed)\n`);
     }
 
+    if (isDiscover && h.success) {
+        out += `
+---${chalk.bold.cyan("Discovery")}
+Tech Stack:      ${h.techStack}
+WAF / CDN:       ${h.waf}
+`;
+    }
+
+    if (isPorts && result.ports) {
+        out += `
+---${chalk.bold.cyan("Port Scan")}
+`;
+        let dangerCount = 0;
+        result.ports.forEach((p: any) => {
+            const status = p.open ? (p.dangerous ? chalk.red.bold('OPEN') : chalk.green('OPEN')) : chalk.gray('CLOSED');
+            out += `${p.port.toString().padEnd(6, ' ')} (${p.name.padEnd(10, ' ')}): ${status}\n`;
+            if (p.open && p.dangerous) dangerCount++;
+        });
+        if (dangerCount > 0) out += chalk.red.bold(`\nCRITICAL: ${dangerCount} dangerous port(s) open to the internet!\n`);
+    }
+
+    if (isMail && result.mail) {
+        out += `
+---${chalk.bold.cyan("Email Security (DNS)")}
+`;
+        if (result.mail.error) out += chalk.red(`Error: ${result.mail.error}\n`);
+        out += `SPF:   ${result.mail.spf ? chalk.green('✓ Protected') : chalk.red('✗ Missing or invalid')}\n`;
+        out += `DMARC: ${result.mail.dmarc ? chalk.green('✓ Protected') : chalk.red('✗ Missing or invalid')}\n`;
+    }
+
+    if (isSpider && result.spider) {
+        out += `
+---${chalk.bold.cyan("Spider (Top Endpoints)")}
+`;
+        if (result.spider.success) {
+            result.spider.endpoints.forEach((ep: any) => {
+                const epUrl = ep.url;
+                const statusStr = ep.status >= 200 && ep.status < 400 ? chalk.green(ep.status) : chalk.red(ep.status || 'ERR');
+                const latStr = (ep.latency + 'ms').padEnd(6, ' ');
+                out += `${statusStr} | ${latStr} | ${epUrl}\n`;
+            });
+        } else {
+            out += chalk.red(`Spider failed: ${result.spider.error}\n`);
+        }
+    }
+
     // Recommendations
     out += `
 ---${chalk.bold.cyan("Recommendations")}
@@ -402,7 +605,7 @@ ${renderProgressBar(secScore, 10)}
     }
 
     console.log(boxen(out.trim(), {
-        padding: 1,
+        padding: { top: 1, bottom: 1, left: 1, right: 14 },
         margin: 1,
         borderStyle: 'double',
         borderColor: 'cyan',

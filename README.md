@@ -72,6 +72,14 @@ npx @fortis-tools/healthcheck yourdomain.com --json
    ```bash
    node dist/index.js google.com
    ```
+---
+
+## 👨‍💻 Maintainer
+
+**Ganesh Angadi**
+- 🐙 GitHub: [@ganeshak11](https://github.com/ganeshak11)
+- 🌐 Portfolio: [ganeshangadi.online](https://ganeshangadi.online)
+- 💼 LinkedIn: [Ganesh Angadi](https://linkedin.com/in/ganeshangadi1301)
 
 ---
 *Built as part of the Fortis-Tools DevOps toolkit.*

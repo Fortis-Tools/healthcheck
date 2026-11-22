@@ -1,6 +1,6 @@
 {
   "name": "@fortis-tools/healthcheck",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "description": "A rapid diagnostic CLI for DevOps",
   "repository": {
     "type": "git",

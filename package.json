@@ -18,7 +18,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node ./dist/index.js",
-    "test": "tsc -p tsconfig.test.json && cp package.json .test-dist/ && node --test .test-dist/test/",
+    "test": "tsc -p tsconfig.test.json && cp package.json .test-dist/ && node --test .test-dist/test/*.test.js",
     "prepublishOnly": "npm run build && npm test"
   },
   "author": "Ganesh Angadi",

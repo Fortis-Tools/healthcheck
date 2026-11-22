@@ -55,6 +55,13 @@ Examples:
   @fortis-tools/healthcheck mysite.com --watch 30
 `;
 
+/**
+ * ora divides by stdout.columns to count the lines it must clear. Some ptys (IDE and agent
+ * terminals, some CI runners) report 0 columns, which makes that Infinity: ora then writes
+ * "cursor up + clear line" forever and the buffered output grows by gigabytes.
+ */
+export const spinnerSafe = () => Boolean(process.stdout.isTTY && (process.stdout.columns ?? 0) > 0);
+
 const checkAll = (opts: Options) => Promise.all(opts.targets.map(t => runCheck(t, opts)));
 
 async function watch(opts: Options): Promise<never> {
@@ -98,7 +105,7 @@ async function main() {
     const interactive = process.stdout.isTTY;
     if (interactive) console.clear();
     const label = opts.targets.length > 1 ? 'Scanning multiple domains...' : `Running diagnostics for ${chalk.cyan(opts.targets[0])}...`;
-    const spinner = ora({ text: label, isEnabled: interactive }).start();
+    const spinner = ora({ text: label, isEnabled: spinnerSafe() }).start();
     const results = await checkAll(opts);
     spinner.stop();
     if (interactive) console.clear();

@@ -1,0 +1,11 @@
+{
+  "domains": ["example.com", "example.org"],
+  "discover": true,
+  "mail": true,
+  "ports": [22, 3306, 6379, 9200],
+  "minScore": 6,
+  "sslWarnDays": 14,
+  "timeout": 5000,
+  "failOn": ["dns", "http", "ssl", "ports"],
+  "format": "text"
+}

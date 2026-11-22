@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - name: Smoke test against a live domain
+        # Only DNS and HTTP decide the exit code, so third-party header changes can't break the build.
+        run: node dist/index.js example.com --json --fail-on dns,http --timeout 8000 > smoke.json
+      - name: Check the JSON shape
+        run: node -e "const r=require('./smoke.json'); if (!r.dns.success || !r.http.success) process.exit(1); console.log('score', r.score)"
